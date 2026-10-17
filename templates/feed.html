@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Live memories · WILD WITHIN{% endblock %}
+{% block breadcrumb %}LIVE MEMORIES{% endblock %}
+{% block content %}
+<section class="page-intro social-intro">
+  <div><div class="eyebrow"><span class="eyebrow-line"></span> BE PRESENT. KEEP THE PROOF.</div><h1>Your life, <em>as it happens.</em></h1><p>Capture a real moment with your camera, turn it into a photo post or a short reel, then shape the story with a caption and tags. Your feed is private by default.</p></div>
+  <div class="social-stat"><span>◉</span><strong>{{ posts|length }}</strong><small>saved memories</small></div>
+</section>
+<div class="social-layout">
+  <section class="panel capture-panel">
+    <div class="panel-heading"><div><div class="eyebrow">CREATE A MEMORY</div><h2>Capture it live</h2></div><span class="tiny-badge">CAMERA ONLY</span></div>
+    <p class="muted">Allow camera access when asked. Photos are limited to 8 MB; reels are limited to 90 seconds and 18 MB. This prototype stores your captures in your account database.</p>
+    <div class="capture-stage"><video id="cameraPreview" autoplay playsinline muted></video><canvas id="captureCanvas" hidden></canvas><div id="cameraPlaceholder" class="camera-placeholder"><span>◉</span><strong>Your next real moment</strong><small>Start the camera to begin</small></div><div id="recordingBadge" class="recording-badge" hidden><i></i> RECORDING</div></div>
+    <div class="capture-controls"><button class="button button-dark" type="button" id="startCamera">Start camera</button><button class="button button-outline" type="button" id="takePhoto" disabled>Take photo</button><button class="button button-outline" type="button" id="startRecording" disabled>Record reel</button><button class="button button-outline" type="button" id="stopRecording" disabled>Stop</button><button class="button button-outline" type="button" id="stopCamera" disabled>Close camera</button></div>
+    <p class="capture-status" id="captureStatus" aria-live="polite">Camera is off. Captured media will appear in the preview before publishing.</p>
+    <div id="capturedPreviewWrap" class="captured-preview-wrap" hidden><div class="panel-heading"><strong>Your capture</strong><button class="text-button" type="button" id="retakeCapture">Retake</button></div><img id="capturedImage" alt="Captured photo preview" hidden><video id="capturedVideo" controls playsinline hidden></video></div>
+    <form class="social-form" id="publishForm" action="{{ url_for('create_post') }}" method="post" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="file" name="media_file" id="mediaFile" hidden>
+      <input type="hidden" name="duration_seconds" id="durationSeconds" value="0">
+      <div class="form-two"><div><label for="memoryKind">Format</label><select name="kind" id="memoryKind"><option value="post">Photo post</option><option value="reel">Short reel</option></select></div><div><label for="memoryTitle">Title (optional)</label><input id="memoryTitle" name="title" maxlength="100" placeholder="A small win today"></div></div>
+      <label for="memoryCaption">Caption</label><textarea id="memoryCaption" name="caption" maxlength="2200" rows="3" placeholder="What made this moment worth keeping? Be real, not perfect."></textarea><div class="field-meta"><span>Keep it yours. No pressure to perform.</span><span id="captionCount">0 / 2200</span></div>
+      <label for="memoryTags">Hashtags (optional)</label><input id="memoryTags" name="hashtags" maxlength="300" placeholder="#morningrun #smallwins #wildwithin">
+      <label for="memoryVisibility">Who can see it?</label><select id="memoryVisibility" name="visibility"><option value="private">Only me — private journal</option><option value="followers">Followers-only (not available yet)</option><option value="public">Public — visible to signed-in users</option></select><p class="form-hint">Public posts appear in other signed-in users’ feeds. Followers-only is not implemented yet, so those posts stay visible only to you.</p>
+      <button class="button button-lime full" type="submit" id="publishButton" disabled>Publish memory <span>↗</span></button>
+    </form>
+  </section>
+  <section class="social-feed-column"><div class="panel-heading feed-heading"><div><div class="eyebrow">YOUR TIMELINE</div><h2>Memories you've kept</h2></div><span class="tiny-badge">YOUR POSTS + PUBLIC POSTS</span></div>
+    {% if posts %}<div class="memory-feed">{% for post in posts %}<article class="memory-card panel"><div class="memory-card-top"><div class="memory-type-icon">{% if post['kind']=='reel' %}▶{% else %}▧{% endif %}</div><div class="memory-heading"><strong>{{ post['title'] or ('A moment in motion' if post['kind']=='reel' else 'A moment worth keeping') }}</strong><small>by {{ post['display_name'] }} · {{ post['created_at'] }} · {% if post['visibility']=='private' %}Only me{% elif post['visibility']=='followers' %}Followers-only (not active){% else %}Public{% endif %}{% if post['updated_at'] != post['created_at'] %} · Edited{% endif %}</small></div><span class="memory-kind">{{ 'REEL' if post['kind']=='reel' else 'PHOTO' }}</span></div>
+      {% if post['kind']=='reel' %}<video class="memory-media" controls playsinline preload="metadata" src="{{ url_for('post_media', post_id=post['id']) }}"></video>{% else %}<img class="memory-media" loading="lazy" src="{{ url_for('post_media', post_id=post['id']) }}" alt="Your captured memory">{% endif %}
+      {% if post['caption'] %}<p class="memory-caption">{{ post['caption'] }}</p>{% endif %}{% if post['hashtags'] %}<p class="memory-tags">{{ post['hashtags'] }}</p>{% endif %}
+      <div class="memory-actions"><a class="button button-outline button-small" href="{{ url_for('edit_post', post_id=post['id']) }}">Edit details</a><form method="post" action="{{ url_for('delete_post', post_id=post['id']) }}" data-confirm="Delete this memory and its media permanently?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button button-outline button-small danger-button" type="submit">Delete</button></form></div>
+    </article>{% endfor %}</div>{% else %}<div class="panel empty-memory"><div class="empty-memory-icon">✦</div><h3>Your story starts with one moment.</h3><p>Take a photo of a small win or record a short reel. This is a space for honest memories, not perfect highlights.</p><button class="button button-dark" type="button" onclick="document.getElementById('startCamera').click()">Start your first capture</button></div>{% endif %}
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='social.js') }}"></script>{% endblock %}
