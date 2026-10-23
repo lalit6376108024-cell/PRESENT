@@ -999,7 +999,22 @@ def wellness():
     today = now_local().date().isoformat()
     if request.method == "POST":
         action = request.form.get("action", "")
-        if action == "water":
+        if action == "goals":
+            try:
+                goals = (
+                    max(0, min(10000, int(request.form.get("water_target_ml", "2500")))),
+                    max(0, min(10000, float(request.form.get("calories_target", "2000")))),
+                    max(0, min(1000, float(request.form.get("protein_target_g", "50")))),
+                    max(0, min(2000, float(request.form.get("carbs_target_g", "275")))),
+                    max(0, min(1000, float(request.form.get("fat_target_g", "78"))))
+                )
+                with connect() as db:
+                    db.execute("INSERT INTO nutrition_goals(user_id,water_target_ml,calories_target,protein_target_g,carbs_target_g,fat_target_g,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET water_target_ml=excluded.water_target_ml,calories_target=excluded.calories_target,protein_target_g=excluded.protein_target_g,carbs_target_g=excluded.carbs_target_g,fat_target_g=excluded.fat_target_g,updated_at=excluded.updated_at",
+                        (uid,*goals,now_local().isoformat(timespec="seconds")))
+                flash("Your daily nutrition targets were saved.", "success")
+            except (ValueError, TypeError):
+                flash("Please enter valid nutrition targets.", "error")
+        elif action == "water":
             try:
                 amount = max(1, min(5000, int(request.form.get("water_ml", "250"))))
             except ValueError:
@@ -1023,22 +1038,6 @@ def wellness():
                 flash("Food entry saved to today's log.", "success")
             else:
                 flash("Choose a food from the library.", "error")
-        return redirect(url_for("wellness"))
-    if request.method == "POST" and action == "goals":
-        try:
-            goals = (
-                max(0, min(10000, int(request.form.get("water_target_ml", "2500")))),
-                max(0, min(10000, float(request.form.get("calories_target", "2000")))),
-                max(0, min(1000, float(request.form.get("protein_target_g", "50")))),
-                max(0, min(2000, float(request.form.get("carbs_target_g", "275")))),
-                max(0, min(1000, float(request.form.get("fat_target_g", "78"))))
-            )
-            with connect() as db:
-                db.execute("INSERT INTO nutrition_goals(user_id,water_target_ml,calories_target,protein_target_g,carbs_target_g,fat_target_g,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET water_target_ml=excluded.water_target_ml,calories_target=excluded.calories_target,protein_target_g=excluded.protein_target_g,carbs_target_g=excluded.carbs_target_g,fat_target_g=excluded.fat_target_g,updated_at=excluded.updated_at",
-                    (uid,*goals,now_local().isoformat(timespec="seconds")))
-            flash("Your daily nutrition targets were saved.", "success")
-        except (ValueError, TypeError):
-            flash("Please enter valid nutrition targets.", "error")
         return redirect(url_for("wellness"))
     q = request.args.get("q", "").strip().lower()
     foods = [f for f in FOOD_LIBRARY if not q or q in f["name"].lower() or q in f["region"].lower()]
