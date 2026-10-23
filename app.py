@@ -398,7 +398,8 @@ def build_free_time(day):
             busy.append((slot["start"], slot["end"], h["name"]))
     busy.sort()
     if not busy:
-        return [], 0, []    merged = []
+        return [], 0, []
+    merged = []
     for start, end, name in busy:
         if merged and start < merged[-1][1]:
             prev = merged[-1]
