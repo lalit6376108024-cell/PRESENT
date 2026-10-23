@@ -13,6 +13,7 @@ from io import BytesIO
 import base64
 from flask import send_file, abort
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from urllib.parse import urlparse, parse_qs
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, session
 
 try:
@@ -397,8 +398,7 @@ def build_free_time(day):
             busy.append((slot["start"], slot["end"], h["name"]))
     busy.sort()
     if not busy:
-        return [], 0, []
-    merged = []
+        return [], 0, []    merged = []
     for start, end, name in busy:
         if merged and start < merged[-1][1]:
             prev = merged[-1]
@@ -797,8 +797,7 @@ def create_post():
     if not upload or not upload.filename:
         flash("Capture a photo or record a reel before publishing.", "error"); return redirect(url_for("feed"))
     media_type = (upload.mimetype or "").lower()
-    if kind == "post" and media_type not in {"image/jpeg", "image/png", "image/webp"}:
-        flash("A post needs a captured photo (JPEG, PNG or WebP).", "error"); return redirect(url_for("feed"))
+    if kind == "post" and media_type not in {"image/jpeg", "image/png", "image/webp"}:        flash("A post needs a captured photo (JPEG, PNG or WebP).", "error"); return redirect(url_for("feed"))
     if kind == "reel" and not media_type.startswith("video/"):
         flash("A reel needs a recorded video.", "error"); return redirect(url_for("feed"))
     max_bytes = 8 * 1024 * 1024 if kind == "post" else 18 * 1024 * 1024
@@ -1067,6 +1066,109 @@ def fashion():
     with connect() as db:
         outfits = db.execute("SELECT * FROM saved_outfits WHERE user_id=? ORDER BY id DESC LIMIT 50", (uid,)).fetchall()
     return render_template("fashion.html", outfits=outfits)
+
+
+# PRESENT discovery add-on: account-owned playlists and song links.
+with connect() as db:
+    if DATABASE_URL:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS music_playlists (
+            id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL, mood TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS music_tracks (
+            id BIGSERIAL PRIMARY KEY, playlist_id BIGINT NOT NULL REFERENCES music_playlists(id) ON DELETE CASCADE,
+            user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL,
+            artist TEXT NOT NULL DEFAULT '', track_url TEXT NOT NULL, created_at TEXT NOT NULL
+        );
+        """)
+    else:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS music_playlists (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            name TEXT NOT NULL, mood TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS music_tracks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, playlist_id INTEGER NOT NULL REFERENCES music_playlists(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, title TEXT NOT NULL,
+            artist TEXT NOT NULL DEFAULT '', track_url TEXT NOT NULL, created_at TEXT NOT NULL
+        );
+        """)
+    db.execute("CREATE INDEX IF NOT EXISTS music_playlists_user_idx ON music_playlists(user_id, created_at)")
+    db.execute("CREATE INDEX IF NOT EXISTS music_tracks_playlist_idx ON music_tracks(playlist_id, created_at)")
+
+@app.get("/music")
+def music_library():
+    uid = current_user_id()
+    with connect() as db:
+        playlists = db.execute("SELECT * FROM music_playlists WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
+        track_rows = db.execute("SELECT * FROM music_tracks WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
+    tracks_by_playlist = {}
+    for row in track_rows:
+        track = dict(row)
+        parsed = urlparse(track["track_url"])
+        host = (parsed.hostname or "").lower()
+        video_id = ""
+        if host in {"youtu.be", "www.youtu.be"}:
+            video_id = parsed.path.strip("/").split("/")[0]
+        elif host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}:
+            if parsed.path == "/watch":
+                video_id = parse_qs(parsed.query).get("v", [""])[0]
+            elif parsed.path.startswith(("/embed/", "/shorts/")):
+                video_id = parsed.path.split("/")[2] if len(parsed.path.split("/")) > 2 else ""
+        track["embed_url"] = ("https://www.youtube-nocookie.com/embed/" + video_id
+                              if video_id and re.fullmatch(r"[A-Za-z0-9_-]{6,20}", video_id) else "")
+        tracks_by_playlist.setdefault(track["playlist_id"], []).append(track)
+    return render_template("music.html", playlists=playlists, tracks_by_playlist=tracks_by_playlist)
+
+@app.post("/music/playlists")
+def create_music_playlist():
+    name = request.form.get("name", "").strip()[:100]
+    mood = request.form.get("mood", "").strip()[:100]
+    if not name:
+        flash("Give your playlist a name.", "error")
+        return redirect(url_for("music_library"))
+    with connect() as db:
+        db.execute("INSERT INTO music_playlists(user_id,name,mood,created_at) VALUES(?,?,?,?)",
+                   (current_user_id(), name, mood, now_local().isoformat(timespec="seconds")))
+    flash("Playlist created.", "success")
+    return redirect(url_for("music_library"))
+
+@app.post("/music/playlists/<int:playlist_id>/tracks")
+def add_music_track(playlist_id):
+    title = request.form.get("title", "").strip()[:160]
+    artist = request.form.get("artist", "").strip()[:160]
+    track_url = request.form.get("track_url", "").strip()[:1000]
+    parsed = urlparse(track_url)
+    host = (parsed.hostname or "").lower()
+    allowed_hosts = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com",
+                     "youtu.be", "open.spotify.com", "soundcloud.com", "www.soundcloud.com"}
+    if not title or parsed.scheme != "https" or host not in allowed_hosts:
+        flash("Add a song title and a secure link from YouTube, YouTube Music, Spotify, or SoundCloud.", "error")
+        return redirect(url_for("music_library"))
+    with connect() as db:
+        owned = db.execute("SELECT id FROM music_playlists WHERE id=? AND user_id=?",
+                           (playlist_id, current_user_id())).fetchone()
+        if not owned:
+            abort(404)
+        db.execute("INSERT INTO music_tracks(playlist_id,user_id,title,artist,track_url,created_at) VALUES(?,?,?,?,?,?)",
+                   (playlist_id, current_user_id(), title, artist, track_url, now_local().isoformat(timespec="seconds")))
+    flash("Song saved to your playlist.", "success")
+    return redirect(url_for("music_library"))
+
+@app.post("/music/tracks/<int:track_id>/delete")
+def delete_music_track(track_id):
+    with connect() as db:
+        db.execute("DELETE FROM music_tracks WHERE id=? AND user_id=?", (track_id, current_user_id()))
+    flash("Song removed from your playlist.", "success")
+    return redirect(url_for("music_library"))
+
+@app.post("/music/playlists/<int:playlist_id>/delete")
+def delete_music_playlist(playlist_id):
+    with connect() as db:
+        db.execute("DELETE FROM music_playlists WHERE id=? AND user_id=?", (playlist_id, current_user_id()))
+    flash("Playlist deleted.", "success")
+    return redirect(url_for("music_library"))
 
 @app.get("/health")
 def health():
