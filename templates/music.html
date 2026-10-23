@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Music library · PRESENT{% endblock %}
+{% block breadcrumb %}MUSIC LIBRARY{% endblock %}
+{% block content %}
+<section class="discovery-hero music-hero"><div><p class="eyebrow">YOUR SOUNDTRACK, YOUR WORLD</p><h1>Press play on your mood.</h1><p>Make playlists for workouts, study sessions, travel, parties, or quiet evenings. Add song links from supported music services and keep your collection with your account.</p><a class="button button-lime" href="#create-playlist">＋ Create a playlist</a></div><div class="hero-sparkle">♫</div></section>
+<section class="panel"><p class="eyebrow">START WITH A MOOD</p><h2>Playlist inspiration</h2><div class="grid-cards">
+<article class="mood-card"><span>⚡</span><h3>Focus mode</h3><p>Instrumentals, ambient sound and deep concentration.</p></article>
+<article class="mood-card"><span>🏃</span><h3>Training energy</h3><p>High-energy tracks for your next workout or run.</p></article>
+<article class="mood-card"><span>🌅</span><h3>Afro house sunset</h3><p>Organic percussion, hypnotic grooves and warm rhythms.</p></article>
+<article class="mood-card"><span>🌙</span><h3>Slow down</h3><p>Calm music for reflection, rest and winding down.</p></article>
+</div></section>
+<section class="panel" id="create-playlist"><p class="eyebrow">YOUR PERSONAL LIBRARY</p><h2>Create a playlist</h2><form method="post" action="{{ url_for('create_music_playlist') }}" class="auth-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label for="playlist-name">Playlist name</label><input id="playlist-name" name="name" required maxlength="100" placeholder="e.g. Afro House — Golden Hour">
+<label for="playlist-mood">Mood or use</label><input id="playlist-mood" name="mood" maxlength="100" placeholder="Workout, focus, party, chill…">
+<button class="button button-lime" type="submit">Create playlist</button></form></section>
+{% if playlists %}<section class="playlist-grid">{% for playlist in playlists %}<article class="panel playlist-card"><div class="playlist-heading"><div><p class="eyebrow">{{ playlist.mood or "YOUR MIX" }}</p><h2>{{ playlist.name }}</h2></div><span class="playlist-note">♫</span></div>
+<form method="post" action="{{ url_for('add_music_track', playlist_id=playlist.id) }}" class="auth-form track-form">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<label>Song title</label><input name="title" maxlength="160" required placeholder="Song name">
+<label>Artist</label><input name="artist" maxlength="160" placeholder="Artist name">
+<label>Song link</label><input name="track_url" type="url" maxlength="1000" required placeholder="https://… YouTube, Spotify or SoundCloud">
+<button class="button button-lime" type="submit">＋ Save song</button></form>
+{% set tracks = tracks_by_playlist.get(playlist.id, []) %}
+{% if tracks %}<div class="track-list"><h3>Tracks · {{ tracks|length }}</h3>{% for track in tracks %}<div class="track-item"><div class="track-meta"><strong>{{ track.title }}</strong><span>{{ track.artist or "Artist not specified" }}</span></div><a class="track-open" href="{{ track.track_url }}" target="_blank" rel="noopener noreferrer">Open song ↗</a>
+{% if track.embed_url %}<details class="track-player"><summary>Play here</summary><div class="embed-frame"><iframe src="{{ track.embed_url }}" title="Player for {{ track.title }}" loading="lazy" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div></details>{% endif %}
+<form method="post" action="{{ url_for('delete_music_track', track_id=track.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-button" type="submit">Remove</button></form></div>{% endfor %}</div>{% else %}<p class="muted">Your playlist is ready. Add a song link above to get started.</p>{% endif %}
+<form method="post" action="{{ url_for('delete_music_playlist', playlist_id=playlist.id) }}" class="delete-playlist"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="text-button" type="submit">Delete playlist</button></form></article>{% endfor %}</section>{% else %}<section class="panel empty-state"><span>♫</span><h2>Your next favorite mix starts here.</h2><p>Create a playlist, then add songs using links from supported music services.</p></section>{% endif %}
+<p class="muted music-disclaimer">PRESENT saves playlist names and song links; it does not host or download copyrighted music. Playback and embedding depend on each provider, song availability, account and regional restrictions.</p>
+{% endblock %}
