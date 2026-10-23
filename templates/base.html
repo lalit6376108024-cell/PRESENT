@@ -18,6 +18,8 @@
     <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}"><span>◫</span> Overview</a>
     <a class="nav-link {% if request.endpoint == 'lab' %}active{% endif %}" href="{{ url_for('lab') }}"><span>✳</span> Habit Lab <i>NEW</i></a>
     <a class="nav-link {% if request.endpoint in ['feed', 'create_post', 'edit_post'] %}active{% endif %}" href="{{ url_for('feed') }}"><span>◉</span> Live memories</a>
+    <a class="nav-link {% if request.endpoint == "wellness" %}active{% endif %}" href="{{ url_for("wellness") }}"><span>♡</span> Health & nutrition</a>
+    <a class="nav-link {% if request.endpoint == "fashion" %}active{% endif %}" href="{{ url_for("fashion") }}"><span>◇</span> Fashion studio</a>
     <div class="sidebar-bottom">
       <div class="forest-card"><div class="forest-orb">✦</div><strong>Small steps.<br>Wild growth.</strong><p>Every action is evidence of who you're becoming.</p></div>
       <div class="timezone"><span class="pulse"></span> {{ timezone_name }} <small>Local time</small></div>
