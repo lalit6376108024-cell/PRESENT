@@ -868,7 +868,7 @@ def admin_snapshot():
     email = os.environ.get("SYNC_USER_EMAIL", "").strip().lower()
     if not email:
         return jsonify({"error": "SYNC_USER_EMAIL must identify the one account allowed to sync to this PC."}), 503
-    tables = ("habits", "logs", "experiments", "experiment_logs", "free_time_plans", "posts")
+    tables = ("habits", "logs", "experiments", "experiment_logs", "free_time_plans", "posts", "nutrition_logs", "nutrition_goals", "saved_outfits")
     payload = {"generated_at": now_local().isoformat(), "tables": {}}
     with connect() as db:
         user = db.execute("SELECT id FROM users WHERE email=?", (email,)).fetchone()
