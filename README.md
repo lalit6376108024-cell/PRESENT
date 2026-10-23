@@ -2,7 +2,7 @@
 ## New lifestyle features
 
 - **Forgot password:** the sign-in screen links to a one-time password-reset link. Tokens are stored as SHA-256 hashes, expire after 30 minutes, and are invalidated after use. Email delivery requires SMTP configuration below. If SMTP is not configured, the app intentionally does not show or log reset tokens.
-- **Health & nutrition:** each signed-in account can log water and food portions. The dashboard calculates logged water, calories, protein, carbohydrates and fats for the current local day. Entries are scoped by account and date.
+- **Health & nutrition:** each signed-in account can log water and food portions. The dashboard calculates logged water, calories, protein, carbohydrates and fats for the current local day. Users can edit their daily target values; the initial values (2,500 ml water, 2,000 kcal, 50 g protein, 275 g carbohydrates and 78 g fat) are generic starting examples, not personalized medical recommendations. Entries and targets are scoped by account. The new wellness and fashion records are included in the authenticated cloud-to-PC snapshot.
 - **Food library:** the current starter catalogue contains common foods from multiple regions with approximate per-100-gram values. These are estimates and are not a substitute for product labels or clinical nutrition advice; this is a starter catalogue, not literally every food in the world.
 - **Fashion studio:** save private outfit ideas by occasion, style inspiration, upper/lower layers, footwear, accessories and notes. Outfits are tied to the signed-in account.
 
