@@ -3,6 +3,9 @@ import json
 import sqlite3
 import re
 import secrets
+import hashlib
+import smtplib
+from email.message import EmailMessage
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import date, datetime, timedelta
@@ -31,7 +34,7 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   SESSION_COOKIE_SECURE=os.environ.get("COOKIE_SECURE", "1" if os.environ.get("RENDER") else "0") == "1",
                   PERMANENT_SESSION_LIFETIME=timedelta(days=14))
 
-PUBLIC_ENDPOINTS = {"login", "signup", "static", "health", "admin_snapshot"}
+PUBLIC_ENDPOINTS = {"login", "signup", "forgot_password", "reset_password", "static", "health", "admin_snapshot"}
 
 def current_user_id():
     value = session.get("user_id")
@@ -66,7 +69,7 @@ def protect_account_and_csrf():
         if request.method == "POST":
             return jsonify({"error": "Please sign in first."}), 401
         return redirect(url_for("login", next=request.full_path))
-    if request.method == "POST" and endpoint not in {"login", "signup"}:
+    if request.method == "POST" and endpoint not in {"login", "signup", "forgot_password", "reset_password"}:
         expected = session.get("csrf_token", "")
         supplied = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
         import hmac
@@ -291,7 +294,54 @@ def init_db():
                 VALUES (?,?,?,?,?,'0,1,2,3,4,5,6',?,?)""",
                 [(n,c,d,m,t,today,created) for n,c,d,m,t in samples])
 
+
 init_db()
+
+# Add-on tables are created without deleting or replacing existing user data.
+with connect() as db:
+    if DATABASE_URL:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS nutrition_logs (
+            id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            log_date TEXT NOT NULL, kind TEXT NOT NULL, item_name TEXT NOT NULL DEFAULT '',
+            quantity REAL NOT NULL DEFAULT 0, water_ml INTEGER NOT NULL DEFAULT 0,
+            calories REAL NOT NULL DEFAULT 0, protein_g REAL NOT NULL DEFAULT 0,
+            carbs_g REAL NOT NULL DEFAULT 0, fat_g REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS saved_outfits (
+            id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL, occasion TEXT NOT NULL DEFAULT '', style TEXT NOT NULL DEFAULT '',
+            top_item TEXT NOT NULL DEFAULT '', bottom_item TEXT NOT NULL DEFAULT '',
+            footwear TEXT NOT NULL DEFAULT '', accessories TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+        );
+        """)
+    else:
+        db.executescript("""
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS nutrition_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            log_date TEXT NOT NULL, kind TEXT NOT NULL, item_name TEXT NOT NULL DEFAULT '',
+            quantity REAL NOT NULL DEFAULT 0, water_ml INTEGER NOT NULL DEFAULT 0,
+            calories REAL NOT NULL DEFAULT 0, protein_g REAL NOT NULL DEFAULT 0,
+            carbs_g REAL NOT NULL DEFAULT 0, fat_g REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS saved_outfits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            title TEXT NOT NULL, occasion TEXT NOT NULL DEFAULT '', style TEXT NOT NULL DEFAULT '',
+            top_item TEXT NOT NULL DEFAULT '', bottom_item TEXT NOT NULL DEFAULT '',
+            footwear TEXT NOT NULL DEFAULT '', accessories TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL
+        );
+        """)
+
 
 def get_day():
     value = request.args.get("date") or request.form.get("log_date") or now_local().date().isoformat()
@@ -815,6 +865,151 @@ def admin_snapshot():
         for table in tables:
             payload["tables"][table] = [dict(row) for row in db.execute(f"SELECT * FROM {table} WHERE user_id=? ORDER BY id", (user["id"],)).fetchall()]
     return jsonify(payload)
+
+
+FOOD_LIBRARY = [
+    {"name":"Oats, dry","region":"Global","calories":389,"protein":16.9,"carbs":66.3,"fat":6.9},
+    {"name":"Rice, cooked","region":"Global","calories":130,"protein":2.7,"carbs":28.2,"fat":0.3},
+    {"name":"Whole-wheat roti","region":"South Asia","calories":297,"protein":9.8,"carbs":55.0,"fat":7.5},
+    {"name":"Dal, cooked","region":"South Asia","calories":116,"protein":9.0,"carbs":20.1,"fat":0.4},
+    {"name":"Paneer","region":"South Asia","calories":265,"protein":18.3,"carbs":1.2,"fat":20.8},
+    {"name":"Plain yogurt","region":"Global","calories":61,"protein":3.5,"carbs":4.7,"fat":3.3},
+    {"name":"Egg, boiled","region":"Global","calories":155,"protein":12.6,"carbs":1.1,"fat":10.6},
+    {"name":"Chicken breast, cooked","region":"Global","calories":165,"protein":31.0,"carbs":0,"fat":3.6},
+    {"name":"Salmon, cooked","region":"Global","calories":206,"protein":22.1,"carbs":0,"fat":12.4},
+    {"name":"Tofu","region":"East Asia","calories":76,"protein":8.1,"carbs":1.9,"fat":4.8},
+    {"name":"Lentils, cooked","region":"Global","calories":116,"protein":9.0,"carbs":20.1,"fat":0.4},
+    {"name":"Chickpeas, cooked","region":"Middle East / South Asia","calories":164,"protein":8.9,"carbs":27.4,"fat":2.6},
+    {"name":"Apple","region":"Global","calories":52,"protein":0.3,"carbs":13.8,"fat":0.2},
+    {"name":"Banana","region":"Global","calories":89,"protein":1.1,"carbs":22.8,"fat":0.3},
+    {"name":"Mango","region":"South Asia","calories":60,"protein":0.8,"carbs":15.0,"fat":0.4},
+    {"name":"Avocado","region":"Americas","calories":160,"protein":2.0,"carbs":8.5,"fat":14.7},
+    {"name":"Almonds","region":"Global","calories":579,"protein":21.2,"carbs":21.6,"fat":49.9},
+    {"name":"Peanuts","region":"Global","calories":567,"protein":25.8,"carbs":16.1,"fat":49.2},
+    {"name":"Spinach, cooked","region":"Global","calories":23,"protein":3.0,"carbs":3.8,"fat":0.3},
+    {"name":"Potato, boiled","region":"Global","calories":87,"protein":1.9,"carbs":20.1,"fat":0.1},
+    {"name":"Olive oil","region":"Mediterranean","calories":884,"protein":0,"carbs":0,"fat":100},
+    {"name":"Corn tortilla","region":"Latin America","calories":218,"protein":5.7,"carbs":44.6,"fat":2.9},
+    {"name":"Quinoa, cooked","region":"South America","calories":120,"protein":4.4,"carbs":21.3,"fat":1.9},
+    {"name":"Kimchi","region":"Korea","calories":15,"protein":1.1,"carbs":2.4,"fat":0.5},
+    {"name":"Sourdough bread","region":"Europe","calories":289,"protein":11.0,"carbs":56.0,"fat":2.0},
+    {"name":"Falafel","region":"Middle East","calories":333,"protein":13.3,"carbs":31.8,"fat":17.8},
+    {"name":"Couscous, cooked","region":"North Africa","calories":112,"protein":3.8,"carbs":23.2,"fat":0.2},
+    {"name":"Edamame, cooked","region":"East Asia","calories":121,"protein":11.9,"carbs":8.9,"fat":5.2},
+    {"name":"Sweet potato, baked","region":"Global","calories":90,"protein":2.0,"carbs":20.7,"fat":0.2}
+]
+
+@app.route("/forgot-password", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = request.form.get("email", "").strip().lower()[:254]
+        generic = "If an account matches that email and email delivery is configured, a reset link will arrive shortly."
+        with connect() as db:
+            user = db.execute("SELECT id,email FROM users WHERE email=?", (email,)).fetchone()
+            if user and os.environ.get("SMTP_HOST") and os.environ.get("SMTP_FROM"):
+                raw_token = secrets.token_urlsafe(32)
+                token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+                expiry = (now_local() + timedelta(minutes=30)).isoformat(timespec="seconds")
+                db.execute("UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at=''", (now_local().isoformat(timespec="seconds"), user["id"]))
+                db.execute("INSERT INTO password_reset_tokens(user_id,token_hash,expires_at,used_at) VALUES(?,?,?,'')", (user["id"], token_hash, expiry))
+                try:
+                    msg = EmailMessage()
+                    msg["Subject"] = "Reset your WILD WITHIN password"
+                    msg["From"] = os.environ["SMTP_FROM"]
+                    msg["To"] = user["email"]
+                    reset_url = url_for("reset_password", token=raw_token, _external=True)
+                    msg.set_content("Use this one-time link within 30 minutes to reset your password:\n\n" + reset_url + "\n\nIf you did not request this, ignore this email.")
+                    with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", "587")), timeout=15) as server:
+                        server.starttls()
+                        smtp_user = os.environ.get("SMTP_USER", "")
+                        if smtp_user:
+                            server.login(smtp_user, os.environ.get("SMTP_PASSWORD", ""))
+                        server.send_message(msg)
+                except Exception:
+                    app.logger.exception("Password-reset email delivery failed")
+        flash(generic, "success")
+        return redirect(url_for("forgot_password"))
+    return render_template("forgot_password.html")
+
+@app.route("/reset-password/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    with connect() as db:
+        record = db.execute("SELECT id,user_id,expires_at,used_at FROM password_reset_tokens WHERE token_hash=?", (token_hash,)).fetchone()
+    valid = bool(record and not record["used_at"] and record["expires_at"] > now_local().isoformat(timespec="seconds"))
+    if not valid:
+        flash("That reset link is invalid or expired. Request a new one.", "error")
+        return redirect(url_for("forgot_password"))
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm_password", "")
+        if len(password) < 12:
+            flash("Choose a password with at least 12 characters.", "error")
+        elif password != confirm:
+            flash("The passwords do not match.", "error")
+        else:
+            with connect() as db:
+                db.execute("UPDATE users SET password_hash=? WHERE id=?", (generate_password_hash(password), record["user_id"]))
+                db.execute("UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at=''", (now_local().isoformat(timespec="seconds"), record["user_id"]))
+            flash("Your password has been reset. Sign in with your new password.", "success")
+            return redirect(url_for("login"))
+    return render_template("reset_password.html", token=token)
+
+@app.route("/wellness", methods=["GET", "POST"])
+def wellness():
+    uid = current_user_id()
+    today = now_local().date().isoformat()
+    if request.method == "POST":
+        action = request.form.get("action", "")
+        if action == "water":
+            try:
+                amount = max(1, min(5000, int(request.form.get("water_ml", "250"))))
+            except ValueError:
+                amount = 250
+            with connect() as db:
+                db.execute("INSERT INTO nutrition_logs(user_id,log_date,kind,item_name,quantity,water_ml,created_at) VALUES(?,?,?,?,?,?,?)",
+                    (uid,today,"water","Water",amount,amount,now_local().isoformat(timespec="seconds")))
+            flash("Water intake saved.", "success")
+        elif action == "food":
+            name = request.form.get("food_name", "").strip()
+            try:
+                grams = max(1, min(3000, float(request.form.get("quantity", "100"))))
+            except ValueError:
+                grams = 100
+            food = next((f for f in FOOD_LIBRARY if f["name"] == name), None)
+            if food:
+                factor = grams / 100.0
+                with connect() as db:
+                    db.execute("INSERT INTO nutrition_logs(user_id,log_date,kind,item_name,quantity,calories,protein_g,carbs_g,fat_g,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (uid,today,"food",name,grams,round(food["calories"]*factor,1),round(food["protein"]*factor,1),round(food["carbs"]*factor,1),round(food["fat"]*factor,1),now_local().isoformat(timespec="seconds")))
+                flash("Food entry saved to today's log.", "success")
+            else:
+                flash("Choose a food from the library.", "error")
+        return redirect(url_for("wellness"))
+    q = request.args.get("q", "").strip().lower()
+    foods = [f for f in FOOD_LIBRARY if not q or q in f["name"].lower() or q in f["region"].lower()]
+    with connect() as db:
+        rows = db.execute("SELECT * FROM nutrition_logs WHERE user_id=? AND log_date=? ORDER BY id DESC", (uid,today)).fetchall()
+        totals = db.execute("SELECT COALESCE(SUM(water_ml),0) water_ml, COALESCE(SUM(calories),0) calories, COALESCE(SUM(protein_g),0) protein_g, COALESCE(SUM(carbs_g),0) carbs_g, COALESCE(SUM(fat_g),0) fat_g FROM nutrition_logs WHERE user_id=? AND log_date=?", (uid,today)).fetchone()
+    return render_template("wellness.html", foods=foods, rows=rows, totals=totals, search=q, today=today)
+
+@app.route("/fashion", methods=["GET", "POST"])
+def fashion():
+    uid = current_user_id()
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()[:100]
+        if not title:
+            flash("Give your outfit a name.", "error")
+        else:
+            fields = [request.form.get(k, "").strip()[:500] for k in ("occasion","style","top_item","bottom_item","footwear","accessories","notes")]
+            with connect() as db:
+                db.execute("INSERT INTO saved_outfits(user_id,title,occasion,style,top_item,bottom_item,footwear,accessories,notes,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (uid,title,*fields,now_local().isoformat(timespec="seconds")))
+            flash("Outfit saved to your private fashion studio.", "success")
+        return redirect(url_for("fashion"))
+    with connect() as db:
+        outfits = db.execute("SELECT * FROM saved_outfits WHERE user_id=? ORDER BY id DESC LIMIT 50", (uid,)).fetchall()
+    return render_template("fashion.html", outfits=outfits)
 
 @app.get("/health")
 def health():
