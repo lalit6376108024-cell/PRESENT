@@ -1,3 +1,23 @@
+
+## New lifestyle features
+
+- **Forgot password:** the sign-in screen links to a one-time password-reset link. Tokens are stored as SHA-256 hashes, expire after 30 minutes, and are invalidated after use. Email delivery requires SMTP configuration below. If SMTP is not configured, the app intentionally does not show or log reset tokens.
+- **Health & nutrition:** each signed-in account can log water and food portions. The dashboard calculates logged water, calories, protein, carbohydrates and fats for the current local day. Entries are scoped by account and date.
+- **Food library:** the current starter catalogue contains common foods from multiple regions with approximate per-100-gram values. These are estimates and are not a substitute for product labels or clinical nutrition advice; this is a starter catalogue, not literally every food in the world.
+- **Fashion studio:** save private outfit ideas by occasion, style inspiration, upper/lower layers, footwear, accessories and notes. Outfits are tied to the signed-in account.
+
+### Password-reset email settings on Render
+
+Add these environment variables in the Render service settings. Use credentials from your email provider; do not put secrets in source code.
+
+- `SMTP_HOST` — provider SMTP hostname
+- `SMTP_PORT` — usually `587` for STARTTLS
+- `SMTP_FROM` — verified sender address
+- `SMTP_USER` — SMTP username, if required
+- `SMTP_PASSWORD` — SMTP password or provider app password, if required
+
+Password-reset email is deliberately disabled until at least `SMTP_HOST` and `SMTP_FROM` are configured. After changing environment variables, redeploy/restart the service. The existing `SECRET_KEY`, `DATABASE_URL`, `SYNC_TOKEN`, and `SYNC_USER_EMAIL` settings should remain configured as before.
+
 # WILD_WITHIN_NEW — Cloud database + PC mirror
 
 This update keeps the existing WILD WITHIN dashboard, activity timetable, free-time planner, Habit Lab, and history. It changes the hosted source of truth to PostgreSQL so the Render app keeps working while your PC is switched off. A Windows sync agent downloads an authenticated read-only snapshot to a persistent SQLite mirror on your PC.
