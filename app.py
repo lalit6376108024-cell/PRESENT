@@ -312,6 +312,12 @@ with connect() as db:
             calories REAL NOT NULL DEFAULT 0, protein_g REAL NOT NULL DEFAULT 0,
             carbs_g REAL NOT NULL DEFAULT 0, fat_g REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS nutrition_goals (
+            user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            water_target_ml INTEGER NOT NULL DEFAULT 2500, calories_target REAL NOT NULL DEFAULT 2000,
+            protein_target_g REAL NOT NULL DEFAULT 50, carbs_target_g REAL NOT NULL DEFAULT 275,
+            fat_target_g REAL NOT NULL DEFAULT 78, updated_at TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS saved_outfits (
             id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             title TEXT NOT NULL, occasion TEXT NOT NULL DEFAULT '', style TEXT NOT NULL DEFAULT '',
@@ -332,6 +338,12 @@ with connect() as db:
             quantity REAL NOT NULL DEFAULT 0, water_ml INTEGER NOT NULL DEFAULT 0,
             calories REAL NOT NULL DEFAULT 0, protein_g REAL NOT NULL DEFAULT 0,
             carbs_g REAL NOT NULL DEFAULT 0, fat_g REAL NOT NULL DEFAULT 0, created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS nutrition_goals (
+            user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+            water_target_ml INTEGER NOT NULL DEFAULT 2500, calories_target REAL NOT NULL DEFAULT 2000,
+            protein_target_g REAL NOT NULL DEFAULT 50, carbs_target_g REAL NOT NULL DEFAULT 275,
+            fat_target_g REAL NOT NULL DEFAULT 78, updated_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS saved_outfits (
             id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -943,7 +955,7 @@ def forgot_password():
                     msg["Subject"] = "Reset your WILD WITHIN password"
                     msg["From"] = os.environ["SMTP_FROM"]
                     msg["To"] = user["email"]
-                    reset_url = url_for("reset_password", token=raw_token, _external=True)
+                    reset_url = url_for("reset_password", token=raw_token, _external=True, _scheme="https" if os.environ.get("RENDER") else "http")
                     msg.set_content("Use this one-time link within 30 minutes to reset your password:\n\n" + reset_url + "\n\nIf you did not request this, ignore this email.")
                     with smtplib.SMTP(os.environ["SMTP_HOST"], int(os.environ.get("SMTP_PORT", "587")), timeout=15) as server:
                         server.starttls()
@@ -1012,12 +1024,30 @@ def wellness():
             else:
                 flash("Choose a food from the library.", "error")
         return redirect(url_for("wellness"))
+    if request.method == "POST" and action == "goals":
+        try:
+            goals = (
+                max(0, min(10000, int(request.form.get("water_target_ml", "2500")))),
+                max(0, min(10000, float(request.form.get("calories_target", "2000")))),
+                max(0, min(1000, float(request.form.get("protein_target_g", "50")))),
+                max(0, min(2000, float(request.form.get("carbs_target_g", "275")))),
+                max(0, min(1000, float(request.form.get("fat_target_g", "78"))))
+            )
+            with connect() as db:
+                db.execute("INSERT INTO nutrition_goals(user_id,water_target_ml,calories_target,protein_target_g,carbs_target_g,fat_target_g,updated_at) VALUES(?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET water_target_ml=excluded.water_target_ml,calories_target=excluded.calories_target,protein_target_g=excluded.protein_target_g,carbs_target_g=excluded.carbs_target_g,fat_target_g=excluded.fat_target_g,updated_at=excluded.updated_at",
+                    (uid,*goals,now_local().isoformat(timespec="seconds")))
+            flash("Your daily nutrition targets were saved.", "success")
+        except (ValueError, TypeError):
+            flash("Please enter valid nutrition targets.", "error")
+        return redirect(url_for("wellness"))
     q = request.args.get("q", "").strip().lower()
     foods = [f for f in FOOD_LIBRARY if not q or q in f["name"].lower() or q in f["region"].lower()]
     with connect() as db:
+        db.execute("INSERT INTO nutrition_goals(user_id,updated_at) VALUES(?,?) ON CONFLICT(user_id) DO NOTHING", (uid,now_local().isoformat(timespec="seconds")))
+        goals = db.execute("SELECT * FROM nutrition_goals WHERE user_id=?", (uid,)).fetchone()
         rows = db.execute("SELECT * FROM nutrition_logs WHERE user_id=? AND log_date=? ORDER BY id DESC", (uid,today)).fetchall()
         totals = db.execute("SELECT COALESCE(SUM(water_ml),0) water_ml, COALESCE(SUM(calories),0) calories, COALESCE(SUM(protein_g),0) protein_g, COALESCE(SUM(carbs_g),0) carbs_g, COALESCE(SUM(fat_g),0) fat_g FROM nutrition_logs WHERE user_id=? AND log_date=?", (uid,today)).fetchone()
-    return render_template("wellness.html", foods=foods, rows=rows, totals=totals, search=q, today=today)
+    return render_template("wellness.html", foods=foods, rows=rows, totals=totals, goals=goals, search=q, today=today)
 
 @app.route("/fashion", methods=["GET", "POST"])
 def fashion():
