@@ -69,7 +69,7 @@ def protect_account_and_csrf():
         if request.method == "POST":
             return jsonify({"error": "Please sign in first."}), 401
         return redirect(url_for("login", next=request.full_path))
-    if request.method == "POST" and endpoint not in {"login", "signup", "forgot_password", "reset_password"}:
+    if request.method == "POST" and endpoint not in {"login", "signup"}:
         expected = session.get("csrf_token", "")
         supplied = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
         import hmac
@@ -967,6 +967,7 @@ def forgot_password():
                     app.logger.exception("Password-reset email delivery failed")
         flash(generic, "success")
         return redirect(url_for("forgot_password"))
+    session.setdefault("csrf_token", secrets.token_urlsafe(32))
     return render_template("forgot_password.html")
 
 @app.route("/reset-password/<token>", methods=["GET", "POST"])
@@ -991,6 +992,7 @@ def reset_password(token):
                 db.execute("UPDATE password_reset_tokens SET used_at=? WHERE user_id=? AND used_at=''", (now_local().isoformat(timespec="seconds"), record["user_id"]))
             flash("Your password has been reset. Sign in with your new password.", "success")
             return redirect(url_for("login"))
+    session.setdefault("csrf_token", secrets.token_urlsafe(32))
     return render_template("reset_password.html", token=token)
 
 @app.route("/wellness", methods=["GET", "POST"])
