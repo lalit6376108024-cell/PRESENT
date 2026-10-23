@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#09251e">
-  <title>{% block title %}WILD WITHIN{% endblock %}</title>
+  <meta name="theme-color" content="#f5f7ff">
+  <title>{% block title %}PRESENT{% endblock %}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -12,26 +12,27 @@
 <body>
 <div class="app-shell">
   <aside class="sidebar">
-    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">W</span><span>WILD <b>WITHIN</b><small>GROW AT YOUR OWN PACE</small></span></a>
+    <a class="brand" href="{{ url_for('index') }}"><span class="brand-mark">P</span><span>PRESENT <b>YOUR WORLD</b><small>STYLE · SOUND · SELF</small></span></a>
     <div class="side-label">YOUR JOURNEY</div>
     <a class="nav-link {% if request.endpoint == 'profile' %}active{% endif %}" href="{{ url_for('profile') }}"><span>◎</span> My profile</a>
     <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}"><span>◫</span> Overview</a>
     <a class="nav-link {% if request.endpoint == 'lab' %}active{% endif %}" href="{{ url_for('lab') }}"><span>✳</span> Habit Lab <i>NEW</i></a>
     <a class="nav-link {% if request.endpoint in ['feed', 'create_post', 'edit_post'] %}active{% endif %}" href="{{ url_for('feed') }}"><span>◉</span> Live memories</a>
     <a class="nav-link {% if request.endpoint == "wellness" %}active{% endif %}" href="{{ url_for("wellness") }}"><span>♡</span> Health & nutrition</a>
-    <a class="nav-link {% if request.endpoint == "fashion" %}active{% endif %}" href="{{ url_for("fashion") }}"><span>◇</span> Fashion studio</a>
+    <a class="nav-link {% if request.endpoint == "fashion" %}active{% endif %}" href="{{ url_for("fashion") }}"><span>◇</span> Fashion discovery</a>
+    <a class="nav-link {% if request.endpoint in ["music_library","create_music_playlist","add_music_track","delete_music_track","delete_music_playlist"] %}active{% endif %}" href="{{ url_for("music_library") }}"><span>♫</span> Music library</a>
     <div class="sidebar-bottom">
       <div class="forest-card"><div class="forest-orb">✦</div><strong>Small steps.<br>Wild growth.</strong><p>Every action is evidence of who you're becoming.</p></div>
       <div class="timezone"><span class="pulse"></span> {{ timezone_name }} <small>Local time</small></div>
     </div>
   </aside>
   <main class="main">
-    <header class="topbar"><div class="mobile-brand">🌿 WILD WITHIN</div><div class="breadcrumb">PERSONAL GROWTH <span>/</span> {% block breadcrumb %}OVERVIEW{% endblock %}</div><div class="top-actions"><span class="live-dot"></span><span>{{ current_profile['display_name'] if current_profile else 'YOUR SPACE' }}</span><a class="avatar" title="My profile" href="{{ url_for('profile') }}">{{ (current_profile['display_name'][0]|upper) if current_profile else 'W' }}</a><a class="logout-link" href="{{ url_for('logout') }}">Sign out</a></div></header>
+    <header class="topbar"><div class="mobile-brand">✦ PRESENT</div><div class="breadcrumb">PERSONAL GROWTH <span>/</span> {% block breadcrumb %}OVERVIEW{% endblock %}</div><div class="top-actions"><span class="live-dot"></span><span>{{ current_profile['display_name'] if current_profile else 'YOUR SPACE' }}</span><a class="avatar" title="My profile" href="{{ url_for('profile') }}">{{ (current_profile['display_name'][0]|upper) if current_profile else 'W' }}</a><a class="logout-link" href="{{ url_for('logout') }}">Sign out</a></div></header>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}<div class="flash-stack">{% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}</div>{% endif %}
     {% endwith %}
     {% block content %}{% endblock %}
-    <footer>WILD WITHIN <span>•</span> Real effort. Honest progress. <span class="footer-right">Your growth belongs to you.</span></footer>
+    <footer>PRESENT <span>•</span> Your life. Your style. Your sound. <span class="footer-right">Your growth belongs to you.</span></footer>
   </main>
 </div>
 <script src="{{ url_for('static', filename='app.js') }}"></script>

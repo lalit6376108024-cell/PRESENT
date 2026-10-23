@@ -123,3 +123,14 @@ The **Live memories** page adds a camera-first capture flow:
 - Camera recording requires browser camera/microphone permission and HTTPS (the Render URL uses HTTPS). The browser must support `getUserMedia` and `MediaRecorder`; use a current Chrome or Safari browser.
 
 **Note:** The audience setting is not a follower system, and this prototype does not yet provide video trimming, filters, cover-frame selection, comments, likes, follows, or direct messaging. Captions, tags, title, audience preference, and delete are editable now.
+
+
+## PRESENT fashion discovery and music library
+
+- **Bright PRESENT theme:** a luminous violet-and-gold interface with a light background, gradient discovery panels, and updated PRESENT navigation.
+- **Fashion discovery:** links to current brand collections at Myntra, Zara India, and H&M India, plus live searches for celebrity-inspired outfit ideas. Retailer pages remain the source of truth for products, pricing, sizes, and stock; the app does not scrape or claim to synchronize retailer inventories.
+- **My Style:** save starter outfit ideas with one click or create custom looks with occasion, style, garments, footwear, accessories, and notes. Saved looks are private to the signed-in account.
+- **Music library:** create playlists by name and mood, save song titles, artist names, and HTTPS links from YouTube/YouTube Music, Spotify, and SoundCloud. Playlist data is stored in the app database and scoped to the signed-in account.
+- **Playback:** YouTube links can be embedded when the URL contains a valid video ID. Other providers open their own player. Playback availability, embedding, catalogue access, and regional restrictions are controlled by each music provider.
+- **Copyright and licensing:** PRESENT stores links and does not host, rip, or download songs. Full-catalogue streaming or offline listening would require a suitable licensed provider integration.
+- **Deployment:** the music tables are created automatically at app startup. Keep the existing `DATABASE_URL` configured on Render for durable cloud persistence; without a configured persistent database, a local SQLite database may be lost if the host filesystem is ephemeral.
